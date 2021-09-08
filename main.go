@@ -9,13 +9,18 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 const baseURL = "https://api.github.com"
 
 var command, owner, repo, title, body string
 var issue int
+
+type IssuesResult []*Issue
 
 type Issue struct {
 	Number    int
@@ -28,8 +33,8 @@ type Issue struct {
 }
 
 type NewIssue struct {
-	Title string
-	Body  string // in Markdown format
+	Title string `json:"title"`
+	Body  string `json:"body"` // in Markdown format
 }
 
 type User struct {
@@ -61,26 +66,69 @@ func main() {
 }
 
 func create() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	githubKey := os.Getenv("GITHUB_TOKEN")
+
+	client := &http.Client{}
 	var issue = NewIssue{Title: title, Body: body}
+	var result *Issue
+	var issuesResult IssuesResult
+
 	url := baseURL + "/repos/" + owner + "/" + repo + "/issues"
-	fmt.Printf("%s\n", url)
 	data, err := json.Marshal(issue)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(data))
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(data))
 	if err != nil {
 		log.Fatal(err)
 	}
-	if resp.StatusCode != http.StatusCreated {
-		resp.Body.Close()
-		fmt.Printf("search query failed: %s", resp.Status)
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	req.Header.Set("Authorization", "Bearer "+githubKey)
+
+	resp, err := client.Do(req)
+
+	if err != nil {
+		log.Fatal(err)
 	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		fmt.Printf("Request failed: %s\n", resp.Status)
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		fmt.Printf("json failed: %s\n", err)
+		log.Fatal(err)
+	}
+	issuesResult = append(issuesResult, result)
+	printResponse(issuesResult)
 }
 
 func read() {
-	fmt.Printf("%s\n", flag.Args()[0:])
+	url := baseURL + "/repos/" + owner + "/" + repo + "/issues"
+	resp, err := http.Get(url)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+	}
+
+	var result IssuesResult
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		resp.Body.Close()
+		log.Fatal(err)
+	}
+	resp.Body.Close()
+	printResponse(result)
 }
 
 func update() {
@@ -89,4 +137,11 @@ func update() {
 
 func lock() {
 	fmt.Printf("%s\n", flag.Args()[0:])
+}
+
+func printResponse(result IssuesResult) {
+	for _, issue := range result {
+		fmt.Printf("#%-5d %9s %.55s\n",
+			issue.Number, issue.User.Login, issue.Title)
+	}
 }
