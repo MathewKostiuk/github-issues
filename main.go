@@ -69,7 +69,9 @@ func main() {
 		var issue = NewIssue{Title: title, Body: body, Number: num}
 		update(url, issue)
 	case "lock":
-		lock()
+		i := strconv.Itoa(num)
+		url := baseURL + "/repos/" + owner + "/" + repo + "/issues/" + i + "/lock"
+		lock(url)
 	}
 }
 
@@ -147,8 +149,22 @@ func update(url string, issue NewIssue) {
 	printResponse(issues)
 }
 
-func lock() {
-	fmt.Printf("%s\n", flag.Args()[0:])
+func lock(url string) {
+	github := auth()
+	client := &http.Client{}
+	req, err := http.NewRequest("PUT", url, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	resp := initRequest(req, github, client)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		fmt.Printf("Request failed: %s\n", resp.Status)
+	}
+
+	fmt.Printf("%s\n", resp.Status)
 }
 
 func printResponse(result IssuesResult) {
