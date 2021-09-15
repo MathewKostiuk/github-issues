@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"strconv"
 	"time"
 
@@ -45,7 +46,7 @@ type User struct {
 }
 
 func init() {
-	flag.StringVar(&command, "command", "read", "Used to determine what action to take")
+	flag.StringVar(&command, "command", "", "Used to determine what action to take")
 	flag.StringVar(&owner, "owner", "", "Owner of the respository")
 	flag.StringVar(&repo, "repo", "", "Repository to search")
 	flag.StringVar(&title, "title", "", "The title of the issue")
@@ -60,10 +61,16 @@ func main() {
 		url := baseURL + "/repos/" + owner + "/" + repo + "/issues"
 		read(url)
 	case "create":
+		if body == "" {
+			askForBody()
+		}
 		url := baseURL + "/repos/" + owner + "/" + repo + "/issues"
 		issue := NewIssue{Title: title, Body: body}
 		create(url, issue)
 	case "update":
+		if body == "" {
+			askForBody()
+		}
 		i := strconv.Itoa(num)
 		url := baseURL + "/repos/" + owner + "/" + repo + "/issues/" + i
 		var issue = NewIssue{Title: title, Body: body, Number: num}
@@ -72,7 +79,36 @@ func main() {
 		i := strconv.Itoa(num)
 		url := baseURL + "/repos/" + owner + "/" + repo + "/issues/" + i + "/lock"
 		lock(url)
+	default:
+		fmt.Println("No command given")
 	}
+}
+
+func askForBody() {
+	fpath := os.TempDir() + "/tmp.txt"
+	f, err := os.Create(fpath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	f.Close()
+
+	// Assuming that VSCode is the editor
+	cmd := exec.Command(os.ExpandEnv("$EDITOR"), fpath, "--wait")
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+
+	err = cmd.Run()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	data, err := os.ReadFile(fpath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	body = string(data)
+	fmt.Printf("%s\n", body)
 }
 
 func create(url string, issue NewIssue) {
